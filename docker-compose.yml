@@ -1,25 +1,27 @@
 services:
   sonarqube:
-    image: sonarqube:latest
-    environment:
-      - SONAR_HOST_URL=http://172.17.0.1:9000
+    image: sonarqube:25.3.0.104237-community
+    # environment:
+    #   - SONAR_HOST_URL=http://172.17.0.1:9000
     env_file:
       - .env
     ports:
       - 9000:9000
+    volumes:
+      - ./sonar-flutter-plugin:/opt/sonarqube/extensions/plugins
     restart: always
     networks:
-      - sonar_network  
+      - sonar_network
 
   sonar-scanner-cli:
-    image: sonarsource/sonar-scanner-cli:latest
-    environment:
-      - SONAR_HOST_URL=http://172.17.0.1:9000
-      # - SONAR_LOGIN=${SONAR_LOGIN}
+    image: sonarsource/sonar-scanner-cli:11.2
+    # environment:
+    #   - SONAR_HOST_URL=http://172.17.0.1:9000
+    # - SONAR_LOGIN=${SONAR_LOGIN}
     networks:
       - sonar_network
     volumes:
-      - ./scanner_cache:/opt/sonar-scanner/.sonar/cache
+      - ./tmp/scanner_cache:/opt/sonar-scanner/.sonar/cache
       # - ./projects:/usr/src
     env_file:
       - .env
