@@ -8,7 +8,7 @@ import aiohttp
 import asyncio
 # import pandas as pd
 from datetime import datetime
-from database import Database
+from database.database import Database
 # import hashlib
 
 class SonarqubeReport:
@@ -16,8 +16,8 @@ class SonarqubeReport:
         self.container_name = f"sonarqube"
         self.network_name = "sonar_network"
         self.base_port = base_port
-        self.sonar_url = f"http://172.17.0.1:9000"
-        self.sonar_url_inside_docker = f"http://172.17.0.1:9000"
+        self.sonar_url = os.getenv('SONAR_HOST_URL', 'http://172.17.0.1:9000')
+        self.sonar_url_inside_docker = os.getenv('SONAR_HOST_URL', 'http://172.17.0.1:9000')
         self.login_info_sq = {
             'user': os.getenv('SONAR_USERNAME', 'admin'),
             'password': os.getenv('SONAR_PASSWORD', 'admin')
@@ -29,7 +29,7 @@ class SonarqubeReport:
         self.api_token = None
         self.default_repos_path = os.getcwd()
         self.cache_dir = os.path.join(self.default_repos_path, cache_dir)
-        self.dir_to_scan = os.path.join(self.default_repos_path, 'scan_here')
+        self.dir_to_scan = os.getenv('SONAR_SOURCES')
         self.db_path = os.path.join(self.default_repos_path, 'output', 'main.db')
         
         self.sonarqube_on = False
@@ -37,8 +37,8 @@ class SonarqubeReport:
         if not os.path.exists(self.cache_dir):
             os.makedirs(self.cache_dir, exist_ok=True)
         
-        if not os.path.exists(self.dir_to_scan):
-            os.makedirs(self.dir_to_scan, exist_ok=True)
+        # if not os.path.exists(self.dir_to_scan):
+        #     os.makedirs(self.dir_to_scan, exist_ok=True)
             
         self.db = Database(self.db_path)
         self.create_table()
@@ -59,41 +59,37 @@ class SonarqubeReport:
             """
         self.db.execute_sql(create_data_snqb_table)
     
-    async def run_analysis_instance(self, project_set):
-        project_name, project_key, project_id = project_set
+    async def run_analysis_instance(self):
+        project_name = 'Sonar Analise'
+        project_key = 'sonar_analise'
+        project_id = 'sonar_analise'
+    
         await self._create_sonar_project(project_name, project_key, project_id)
         
-        project_dir_path = os.path.join(self.dir_to_scan, project_name)
+        # project_dir_path = os.path.join(self.dir_to_scan, project_name)
         
-        await self._run_scanner(project_name, project_id, project_dir_path)
+        await self._run_scanner(project_name, project_id, self.dir_to_scan)
         metrics = await self._gather_metrics(project_id)
         await self.format_output_data(metrics, project_id, self.default_repos_path)
         
-        await self._delete_project(project_name, project_key, project_id)
+        # await self._delete_project(project_name, project_key, project_id)
         return True
         
                 
-    async def run_analysis(self, project_set, limit=4):
+    async def run_analysis(self, limit=1):
         """
         Gather metrics for each project using the SonarQube Web API .
         """
-        results = []
-        # print('running run_analysis')
         semaphore = asyncio.Semaphore(limit)
-        total_tasks = len(project_set)
-        completed_tasks = 0
         
-        async def limited_run(project_info):
+        async def limited_run():
             async with semaphore:
-                return await self.run_analysis_instance(project_info)
+                return await self.run_analysis_instance()
 
-        tasks = [asyncio.create_task(limited_run(project_info)) for project_info in project_set]
+        task = [asyncio.create_task(limited_run())]
 
-        for finished_task in asyncio.as_completed(tasks):
+        for finished_task in asyncio.as_completed(task):
             result = await finished_task
-            completed_tasks += 1
-            
-            print(f"Progress: {completed_tasks}/{total_tasks} tasks completed")
 
     
     async def _run_scanner(self, project_name, project_id, project_dir_path, retries=5):
@@ -110,7 +106,8 @@ class SonarqubeReport:
                     '-Dsonar.projectKey=' + project_id,
                     '-Dsonar.projectName=' + project_name,
                     '-Dsonar.sources=' + project_name,
-                    '-Dsonar.host.url=' + self.sonar_url_inside_docker,
+                    '-Dsonar.host.url=' + self.sonar_url_inside_docker.replace("http+docker", "http"),
+                    # '-Dsonar.host.url=' + self.sonar_url_inside_docker,
                     '-Dsonar.login=' + self.api_token,
                     '-D', "sonar.exclusions=**/*.java",
                     stdout=asyncio.subprocess.PIPE,
@@ -153,6 +150,7 @@ class SonarqubeReport:
                             if measures:
                                 print(f'received')
                                 info[project_id] = measures
+                                print(info)
                                 return info
                             # else:
                             #     print(f"Metrics not yet available for project '{project_id}', retrying...")
@@ -193,31 +191,6 @@ class SonarqubeReport:
         else:
             raise Exception(f'More than one directory inside the project_dir_path {project_dir_path}, {dirs_in_repo}')
         
-    
-  
-
-
-
-
-    # def _checkout_repo(self, repo_path, commit_hash):
-    #     repo = Repo(repo_path)
-    #     try:
-    #         # Checkout to the specified commit
-    #         repo.git.checkout(commit_hash, force=True)
-    #         # print(f"Checked out to commit {commit_hash}")
-
-    #         # Define directories to remove
-    #         dirs_to_remove = [".git", ".github"]  # Add other non-essential directories here
-
-    #         # Remove each directory if it exists
-    #         for dir_name in dirs_to_remove:
-    #             dir_path = os.path.join(repo_path, dir_name)
-    #             if os.path.isdir(dir_path):
-    #                 shutil.rmtree(dir_path)
-    #                 # print(f"Removed directory: {dir_path}")
-
-    #     except Exception as e:
-    #         raise Exception(f"Failed to checkout to commit {commit_hash}: {e}")
 
     async def _create_sonar_project(self, project_name, project_key, project_id):
         url = f"{self.sonar_url}/api/projects/create"
@@ -252,38 +225,6 @@ class SonarqubeReport:
                         retry += 1
                         await asyncio.sleep(2)
             raise Exception(f"Error checking project presence after {retries} retries.")
-    
-    async def _delete_project(self, project_name, project_key, project_id, retries=20):
-        is_present_online = await self._is_project_present(project_id)
-        if is_present_online:
-            url = f"{self.sonar_url}/api/projects/delete"
-            data = {
-                "name": project_name,
-                "project": project_id
-            }
-            retry = 0
-            async with aiohttp.ClientSession(auth=aiohttp.BasicAuth('admin', 'admin')) as session:
-                while retry < retries:
-                    try:
-                        async with session.post(url, data=data) as response:
-                            if response.status == 200:
-                                is_deleted = not await self._is_project_present(project_id)
-                                if is_deleted:
-                                    break
-                                else:
-                                    return False
-                            else:
-                                retry += 1
-                                await asyncio.sleep(2)
-                        if retry >= retries:
-                            raise Exception(f"Error deleting project after {retries} retries.")
-                    except aiohttp.ClientError as e:
-                        print(f"Network error occurred: {e}")
-                        retry += 1
-                        await asyncio.sleep(2)
-                    if retry >= retries:
-                        raise Exception(f"Error deleting project after {retries} retries.")
-
         
     def run_and_is_on_sonarqube(self, max_retries=1800, delay=1):
         import subprocess
@@ -340,7 +281,6 @@ class SonarqubeReport:
                 self.headers = {
                     "Authorization": f"Bearer {self.api_token}",
                 }
-                # print(f"Token obtained")
             else:
                 # If the login fails, SonarQube returns a different status code
                 print(f"Token failed: {response.status_code}, token: {self.api_token}")
@@ -366,20 +306,8 @@ class SonarqubeReport:
 async def main():
     sonar_report = SonarqubeReport()
     try:
-        dirs_to_scan = [dir_to_scan for dir_to_scan in os.listdir(sonar_report.dir_to_scan) if os.path.isdir(os.path.join(sonar_report.dir_to_scan, dir_to_scan))]
-        
-        project_keys = range(len(dirs_to_scan))
-        project_names = [dir_to_scan for dir_to_scan in dirs_to_scan]
-        project_ids = [f"{dir_to_scan}_-_{project_key}" for dir_to_scan, project_key in zip(dirs_to_scan, project_keys)]
-        
-        project_set = []
-        
-        for name, key, proj_id in zip(project_names, project_keys, project_ids):
-            project_set.append((name, key, proj_id))  # Append a tuple
-        
-        print(f'{project_set}')
         sonar_report.run_and_is_on_sonarqube()
-        await sonar_report.run_analysis(project_set)
+        await sonar_report.run_analysis()
 
     except Exception as e:
         print(f'process failed: {e}')

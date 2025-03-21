@@ -1,8 +1,6 @@
 services:
   sonarqube:
     image: sonarqube:25.3.0.104237-community
-    # environment:
-    #   - SONAR_HOST_URL=http://172.17.0.1:9000
     env_file:
       - .env
     ports:
@@ -15,14 +13,10 @@ services:
 
   sonar-scanner-cli:
     image: sonarsource/sonar-scanner-cli:11.2
-    # environment:
-    #   - SONAR_HOST_URL=http://172.17.0.1:9000
-    # - SONAR_LOGIN=${SONAR_LOGIN}
     networks:
       - sonar_network
     volumes:
       - ./tmp/scanner_cache:/opt/sonar-scanner/.sonar/cache
-      # - ./projects:/usr/src
     env_file:
       - .env
     restart: always

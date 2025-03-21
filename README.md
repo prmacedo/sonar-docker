@@ -13,3 +13,13 @@
 - [ ] Preparar o 'ambiente' para rodar a análise do flutter (rodar `flutter test`)
 
 - [ ] Remover async ?
+
+## Como rodar o projeto
+
+- Criar o venv
+
+- Instalar requirements
+
+- Entrar no venv
+
+- Executar o main.py
